@@ -27,8 +27,8 @@ set.seed(3433)
 
 download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", ".Ruserdata/pml_train.csv")
 download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", ".Ruserdata/pml_test.csv")
-data<-read.csv(".Ruserdata/pml_train.csv", stringsAsFactors=FALSE )
-ftest<-read.csv(".Ruserdata/pml_test.csv",stringsAsFactors=FALSE )
+data<-read.csv(".Ruserdata/pml_train.csv", stringsAsFactors=FALSE ,na.strings=c("NA","#DIV/0!", ""))
+ftest<-read.csv(".Ruserdata/pml_test.csv",stringsAsFactors=FALSE, na.strings=c("NA","#DIV/0!", "") )
 
 data$classe<-factor(data$classe)
 
@@ -56,19 +56,19 @@ Next, we deal with other NA and values by imputing nearest neighbour in preProce
 
 
 ```{r}
-training<-data.frame(training[,1:10], training[,37:49], training[,60:68], training[,84:86], training[,113:124], training[,151:160])
-testing<-data.frame(testing[,1:10], testing[,37:49], testing[,60:68], testing[,84:86], testing[,113:124], testing[,151:160])
-ftest<-data.frame(ftest[,1:10], ftest[,37:49], ftest[,60:68], ftest[,84:86], ftest[,113:124], ftest[,151:160])
+training<-data.frame(training[,8:10], training[,37:49], training[,60:68], training[,84:86], training[,113:124], training[,151:160])
+testing<-data.frame(testing[,8:10], testing[,37:49], testing[,60:68], testing[,84:86], testing[,113:124], testing[,151:160])
+ftest<-data.frame(ftest[,8:10], ftest[,37:49], ftest[,60:68], ftest[,84:86], ftest[,113:124], ftest[,151:160])
 
 
-corM<-cor(training[,7:56])
+corM<-cor(training[,-50])
 highcor<-findCorrelation(corM, cutoff = .7, verbose = F)
-highcor=highcor+6
+
 training<-training[,-highcor]
 testing<-testing[,-highcor]
 ftest<-ftest[,-highcor]
 
-preObj<-preProcess(training[,-37],method="knnImpute")
+
 
 
 ```
@@ -76,26 +76,34 @@ preObj<-preProcess(training[,-37],method="knnImpute")
 
 ## Cross validation
 
-I applied svmLinear model, with corssvalidation (5 sections). 
+I applied svmLinear and rf model, with corssvalidation (5 sections). 
 
 ```{r}
 data_ctrl <- trainControl(method = "cv", number = 5)
 mod_svm <- train(classe ~ .,   
                      data = training,  
-                     preProcess="knnImpute",
-                     trControl = data_ctrl,              
+                     trControl = data_ctrl,            
                      method = "svmLinear",                      
                      na.action = na.pass)  
+mod_rf <- train(classe ~ .,   
+                     data = training,  
+                     trControl = data_ctrl,            
+                     method = "rf",                      
+                     na.action = na.pass) 
+mod_svm$results
+mod_rf$results
 
 ```
+
+Random forest achieves much better in sample accuracy. We chose it.
 
 ## Testing (out of sample error)
 
 To test for out of sample error, we use previously made testing dataframe. Confusion matrix gives us summary statistics on model accuracy
 
 ```{r}
-predsvm<-predict(mod_svm,testing)
-confusionMatrix(predsvm,testing$classe)
+predrf<-predict(mod_rf,testing)
+confusionMatrix(predrf,testing$classe)
 
 ```
   
@@ -106,7 +114,7 @@ Result is quite satisfying, with almost 100% classification accuracy.
 Finaly, I use small testing dataset and predict on it to get predictions for final quizz:  
 
 ```{r}
-fpred<-predict(mod_svm,ftest)
+fpred<-predict(mod_rf,ftest)
 fpred
 ```
 

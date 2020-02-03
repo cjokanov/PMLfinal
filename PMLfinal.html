@@ -386,8 +386,8 @@ summary {
 
 download.file(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv&quot;, &quot;.Ruserdata/pml_train.csv&quot;)
 download.file(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv&quot;, &quot;.Ruserdata/pml_test.csv&quot;)
-data&lt;-read.csv(&quot;.Ruserdata/pml_train.csv&quot;, stringsAsFactors=FALSE )
-ftest&lt;-read.csv(&quot;.Ruserdata/pml_test.csv&quot;,stringsAsFactors=FALSE )
+data&lt;-read.csv(&quot;.Ruserdata/pml_train.csv&quot;, stringsAsFactors=FALSE ,na.strings=c(&quot;NA&quot;,&quot;#DIV/0!&quot;, &quot;&quot;))
+ftest&lt;-read.csv(&quot;.Ruserdata/pml_test.csv&quot;,stringsAsFactors=FALSE, na.strings=c(&quot;NA&quot;,&quot;#DIV/0!&quot;, &quot;&quot;) )
 
 data$classe&lt;-factor(data$classe)
 
@@ -408,76 +408,87 @@ testing = data[-inTrain, ]</code></pre>
 <p>Dataset has 160 variables, many of them formated in peculiar ways with lot of missing data. Easy, blind approach will not work. We refer to the dataset website to find more info on the dataset and choose the set of variables to train the model on. To start, we remove all the columns that have mostly NA data. This leaves us with 57 columns (vs 160)</p>
 <p>Estimateing correlation matrix enables us to remove predictors with high correlation</p>
 <p>Next, we deal with other NA and values by imputing nearest neighbour in preProcess function</p>
-<pre class="r"><code>training&lt;-data.frame(training[,1:10], training[,37:49], training[,60:68], training[,84:86], training[,113:124], training[,151:160])
-testing&lt;-data.frame(testing[,1:10], testing[,37:49], testing[,60:68], testing[,84:86], testing[,113:124], testing[,151:160])
-ftest&lt;-data.frame(ftest[,1:10], ftest[,37:49], ftest[,60:68], ftest[,84:86], ftest[,113:124], ftest[,151:160])
+<pre class="r"><code>training&lt;-data.frame(training[,8:10], training[,37:49], training[,60:68], training[,84:86], training[,113:124], training[,151:160])
+testing&lt;-data.frame(testing[,8:10], testing[,37:49], testing[,60:68], testing[,84:86], testing[,113:124], testing[,151:160])
+ftest&lt;-data.frame(ftest[,8:10], ftest[,37:49], ftest[,60:68], ftest[,84:86], ftest[,113:124], ftest[,151:160])
 
 
-corM&lt;-cor(training[,7:56])
+corM&lt;-cor(training[,-50])
 highcor&lt;-findCorrelation(corM, cutoff = .7, verbose = F)
-highcor=highcor+6
+
 training&lt;-training[,-highcor]
 testing&lt;-testing[,-highcor]
-ftest&lt;-ftest[,-highcor]
-
-preObj&lt;-preProcess(training[,-37],method=&quot;knnImpute&quot;)</code></pre>
+ftest&lt;-ftest[,-highcor]</code></pre>
 </div>
 <div id="cross-validation" class="section level2">
 <h2>Cross validation</h2>
-<p>I applied svmLinear model, with corssvalidation (5 sections).</p>
+<p>I applied svmLinear and rf model, with corssvalidation (5 sections).</p>
 <pre class="r"><code>data_ctrl &lt;- trainControl(method = &quot;cv&quot;, number = 5)
 mod_svm &lt;- train(classe ~ .,   
                      data = training,  
-                     preProcess=&quot;knnImpute&quot;,
-                     trControl = data_ctrl,              
+                     trControl = data_ctrl,            
                      method = &quot;svmLinear&quot;,                      
-                     na.action = na.pass)  </code></pre>
+                     na.action = na.pass)  
+mod_rf &lt;- train(classe ~ .,   
+                     data = training,  
+                     trControl = data_ctrl,            
+                     method = &quot;rf&quot;,                      
+                     na.action = na.pass) 
+mod_svm$results</code></pre>
+<pre><code>##   C  Accuracy     Kappa  AccuracySD     KappaSD
+## 1 1 0.6209389 0.5170738 0.007318222 0.009458337</code></pre>
+<pre class="r"><code>mod_rf$results</code></pre>
+<pre><code>##   mtry  Accuracy     Kappa  AccuracySD     KappaSD
+## 1    2 0.9837617 0.9794532 0.003490807 0.004417321
+## 2   15 0.9826746 0.9780808 0.003193703 0.004039713
+## 3   29 0.9707849 0.9630409 0.006517122 0.008247210</code></pre>
+<p>Random forest achieves much better in sample accuracy. We chose it.</p>
 </div>
 <div id="testing-out-of-sample-error" class="section level2">
 <h2>Testing (out of sample error)</h2>
 <p>To test for out of sample error, we use previously made testing dataframe. Confusion matrix gives us summary statistics on model accuracy</p>
-<pre class="r"><code>predsvm&lt;-predict(mod_svm,testing)
-confusionMatrix(predsvm,testing$classe)</code></pre>
+<pre class="r"><code>predrf&lt;-predict(mod_rf,testing)
+confusionMatrix(predrf,testing$classe)</code></pre>
 <pre><code>## Confusion Matrix and Statistics
 ## 
 ##           Reference
 ## Prediction    A    B    C    D    E
-##          A 1395    0    0    0    0
-##          B    0  949    0    0    0
-##          C    0    0  855    0    0
-##          D    0    0    0  804    0
-##          E    0    0    0    0  901
+##          A 1391   15    0    0    0
+##          B    3  929   20    0    0
+##          C    0    3  832   27    0
+##          D    1    2    3  776    3
+##          E    0    0    0    1  898
 ## 
 ## Overall Statistics
-##                                      
-##                Accuracy : 1          
-##                  95% CI : (0.9992, 1)
-##     No Information Rate : 0.2845     
-##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16  
-##                                      
-##                   Kappa : 1          
-##                                      
-##  Mcnemar&#39;s Test P-Value : NA         
+##                                           
+##                Accuracy : 0.9841          
+##                  95% CI : (0.9802, 0.9874)
+##     No Information Rate : 0.2845          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.9799          
+##                                           
+##  Mcnemar&#39;s Test P-Value : NA              
 ## 
 ## Statistics by Class:
 ## 
 ##                      Class: A Class: B Class: C Class: D Class: E
-## Sensitivity            1.0000   1.0000   1.0000   1.0000   1.0000
-## Specificity            1.0000   1.0000   1.0000   1.0000   1.0000
-## Pos Pred Value         1.0000   1.0000   1.0000   1.0000   1.0000
-## Neg Pred Value         1.0000   1.0000   1.0000   1.0000   1.0000
+## Sensitivity            0.9971   0.9789   0.9731   0.9652   0.9967
+## Specificity            0.9957   0.9942   0.9926   0.9978   0.9998
+## Pos Pred Value         0.9893   0.9758   0.9652   0.9885   0.9989
+## Neg Pred Value         0.9989   0.9949   0.9943   0.9932   0.9993
 ## Prevalence             0.2845   0.1935   0.1743   0.1639   0.1837
-## Detection Rate         0.2845   0.1935   0.1743   0.1639   0.1837
-## Detection Prevalence   0.2845   0.1935   0.1743   0.1639   0.1837
-## Balanced Accuracy      1.0000   1.0000   1.0000   1.0000   1.0000</code></pre>
+## Detection Rate         0.2836   0.1894   0.1697   0.1582   0.1831
+## Detection Prevalence   0.2867   0.1941   0.1758   0.1601   0.1833
+## Balanced Accuracy      0.9964   0.9866   0.9828   0.9815   0.9982</code></pre>
 <p>Result is quite satisfying, with almost 100% classification accuracy.</p>
 </div>
 <div id="final-answer" class="section level2">
 <h2>Final answer</h2>
 <p>Finaly, I use small testing dataset and predict on it to get predictions for final quizz:</p>
-<pre class="r"><code>fpred&lt;-predict(mod_svm,ftest)
+<pre class="r"><code>fpred&lt;-predict(mod_rf,ftest)
 fpred</code></pre>
-<pre><code>##  [1] B  A  B  A  A  E  D  B  A  A  B  C  B  A  E  E  A  B  B  B
+<pre><code>##  [1] B A B A A E D B A A B C B A E E A B B B
 ## Levels: A B C D E</code></pre>
 </div>
 
