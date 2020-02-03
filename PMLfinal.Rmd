@@ -1,0 +1,114 @@
+---
+title: "Practical Machine Learning Practical Assignement"
+author: "CJ"
+date: "2/2/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+## Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+To prepare for our model building we will:  
+1. Download train and test files from the supplied links
+2. Partition the train data into our train and test data (3/4 partition), to be able to estimate out of sample accuracy
+
+
+```{r}
+library(caret)
+library(gbm)
+set.seed(3433)
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", ".Ruserdata/pml_train.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", ".Ruserdata/pml_test.csv")
+data<-read.csv(".Ruserdata/pml_train.csv", stringsAsFactors=FALSE )
+ftest<-read.csv(".Ruserdata/pml_test.csv",stringsAsFactors=FALSE )
+
+data$classe<-factor(data$classe)
+
+
+data$user_name<-factor(data$user_name)
+ftest$user_name<-factor(ftest$user_name)
+
+data$new_window<-factor(data$new_window)
+ftest$new_window<-factor(ftest$new_window)
+
+
+inTrain = createDataPartition(data$classe, p = 3/4)[[1]]
+training = data[inTrain, ]
+testing = data[-inTrain, ]
+
+```
+## Preprocess
+  
+Dataset has 160 variables, many of them formated in peculiar ways with lot of missing data. Easy, blind approach will not work. We refer to the dataset website to find more info on the dataset and choose the set of variables to train the model on.  To start, we remove all the columns that have mostly NA data. This leaves us with 57 columns (vs 160)
+
+Estimateing correlation matrix enables us to remove predictors with high correlation
+
+Next, we deal with other NA and values by imputing nearest neighbour in preProcess function
+
+
+
+```{r}
+training<-data.frame(training[,1:10], training[,37:49], training[,60:68], training[,84:86], training[,113:124], training[,151:160])
+testing<-data.frame(testing[,1:10], testing[,37:49], testing[,60:68], testing[,84:86], testing[,113:124], testing[,151:160])
+ftest<-data.frame(ftest[,1:10], ftest[,37:49], ftest[,60:68], ftest[,84:86], ftest[,113:124], ftest[,151:160])
+
+
+corM<-cor(training[,7:56])
+highcor<-findCorrelation(corM, cutoff = .7, verbose = F)
+highcor=highcor+6
+training<-training[,-highcor]
+testing<-testing[,-highcor]
+ftest<-ftest[,-highcor]
+
+preObj<-preProcess(training[,-37],method="knnImpute")
+
+
+```
+
+
+## Cross validation
+
+I applied svmLinear model, with corssvalidation (5 sections). 
+
+```{r}
+data_ctrl <- trainControl(method = "cv", number = 5)
+mod_svm <- train(classe ~ .,   
+                     data = training,  
+                     preProcess="knnImpute",
+                     trControl = data_ctrl,              
+                     method = "svmLinear",                      
+                     na.action = na.pass)  
+
+```
+
+## Testing (out of sample error)
+
+To test for out of sample error, we use previously made testing dataframe. Confusion matrix gives us summary statistics on model accuracy
+
+```{r}
+predsvm<-predict(mod_svm,testing)
+confusionMatrix(predsvm,testing$classe)
+
+```
+  
+Result is quite satisfying, with almost 100% classification accuracy. 
+
+## Final answer 
+
+Finaly, I use small testing dataset and predict on it to get predictions for final quizz:  
+
+```{r}
+fpred<-predict(mod_svm,ftest)
+fpred
+```
+
+
+
